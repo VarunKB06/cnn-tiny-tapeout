@@ -19,7 +19,6 @@ module pe #(
     input  wire signed [ACC_WIDTH-1:0]  psum_in,
 
     output reg signed [DATA_WIDTH-1:0] data_out,
-    output reg signed [DATA_WIDTH-1:0] weight_out,
     output reg signed [ACC_WIDTH-1:0]  psum_out
 );
 
@@ -48,13 +47,13 @@ module pe #(
     always @(posedge clk) begin
         if (rst) begin
             data_out   <= 0;
-            weight_out <= 0;
+            
             psum_out   <= 0;
         end
         else begin
             // Registered systolic forwarding.
             data_out   <= data_in;
-            weight_out <= weight_in;
+            
 
             // Pass the accumulated partial sum to the next PE.
             if (compute_en)
@@ -126,7 +125,7 @@ module systolic_array #(
         .weight_in(weight_0),
         .psum_in({ACC_WIDTH{1'b0}}),
         .data_out(feature_fwd_0),
-        .weight_out(),
+        
         .psum_out(psum_0)
     );
 
@@ -141,7 +140,7 @@ module systolic_array #(
         .weight_in(weight_1),
         .psum_in(psum_0),
         .data_out(feature_fwd_1),
-        .weight_out(),
+        
         .psum_out(psum_1)
     );
 
@@ -156,7 +155,7 @@ module systolic_array #(
         .weight_in(weight_2),
         .psum_in(psum_1),
         .data_out(feature_fwd_2),
-        .weight_out(),
+       
         .psum_out(psum_2)
     );
 
@@ -171,7 +170,7 @@ module systolic_array #(
         .weight_in(weight_3),
         .psum_in(psum_2),
         .data_out(),
-        .weight_out(),
+        
         .psum_out(row_result)
     );
 
