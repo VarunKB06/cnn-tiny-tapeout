@@ -208,7 +208,8 @@ module controller_fsm #(
    localparam COUNT_WIDTH =
     (COMPUTE_CYCLES > 1) ? $clog2(COMPUTE_CYCLES) : 1;
 
-localparam [COUNT_WIDTH-1:0] LAST_CYCLE = COMPUTE_CYCLES - 1;
+localparam [COUNT_WIDTH-1:0] LAST_CYCLE =
+    COUNT_WIDTH'(COMPUTE_CYCLES - 1);
 
 reg [COUNT_WIDTH-1:0] cycle_count;
 
@@ -409,7 +410,7 @@ module tt_um_cnn_accelerator (
 );
 
     // Commands: uio_in[1:0]
-    localparam CMD_IDLE  = 2'b00;
+    
     localparam CMD_LOAD  = 2'b01;
     localparam CMD_START = 2'b10;
     localparam CMD_READ  = 2'b11;
