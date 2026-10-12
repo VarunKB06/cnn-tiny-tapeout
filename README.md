@@ -1,15 +1,17 @@
 # Resource-Shared 4×4 INT4 MAC Accelerator
 
-[![RTL Tests](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml)
+[![RTL](https://img.shields.io/badge/RTL-Verilog-2ea44f)](https://github.com/VarunKB06/cnn-tiny-tapeout)
+[![Tests](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml)
 [![GDS Flow](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/gds.yaml/badge.svg?branch=main)](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/gds.yaml)
+![FPGA](https://img.shields.io/badge/FPGA-Vivado%20RTL%20Simulation-brightgreen?logo=xilinx&logoColor=white)
 
-A Tiny Tapeout / SKY130 RTL project exploring **resource sharing for a 4-feature, 4-weight INT4 multiply-accumulate workload**. Rather than instantiating sixteen processing elements (PEs), the design reuses a chain of four PEs to process four feature rows sequentially.
+A Tiny Tapeout / SKY130 RTL project exploring resource sharing for a four-feature, four-weight INT4 multiply-accumulate workload. Rather than instantiating sixteen processing elements (PEs), the design reuses a chain of four PEs to process four feature rows sequentially.
 
-> **Architecture scope:** this is a resource-shared 4×4 workload, not a fully parallel 16-PE systolic array or a general matrix-multiplication engine. For each transaction, the current datapath computes `y[r] = feature[r] × sum(weights[0:4])` for `r = 0..3`.
+> **Architecture scope:** This is a resource-shared 4×4 workload, not a fully parallel 16-PE systolic array or a general matrix-multiplication engine. For each transaction, the current datapath computes `y[r] = feature[r] × sum(weights[0:4])` for `r = 0..3`.
 
 ## Highlights
 
-- Signed INT4 input values (`-8` through `+7`)
+- Signed INT4 input values (−8 through +7)
 - Four reusable processing elements
 - Signed 10-bit accumulation and output storage
 - Sequential processing of four feature values
@@ -23,14 +25,14 @@ Each PE contains a signed 4-bit multiplier, a signed accumulator, and registered
 ```mermaid
 flowchart TD
     F[Four INT4 features] --> FS[Feature selector]
-    W[Four INT4 weights] --> PE0
-    W --> PE1
-    W --> PE2
-    W --> PE3
-    FS --> PE0[PE 0: x × w0]
-    PE0 --> PE1[PE 1: accumulate w1]
-    PE1 --> PE2[PE 2: accumulate w2]
-    PE2 --> PE3[PE 3: accumulate w3]
+    W[Four INT4 weights] --> PE0[PE 0: multiply by weight 0]
+    PE0 --> PE1[PE 1: accumulate weight 1]
+    PE1 --> PE2[PE 2: accumulate weight 2]
+    PE2 --> PE3[PE 3: accumulate weight 3]
+    FS --> PE0
+    FS --> PE1
+    FS --> PE2
+    FS --> PE3
     PE3 --> CAP[Capture row result]
     CAP --> O[One of four output registers]
     CTRL[Controller: clear / compute / capture / select row] --> FS
@@ -40,15 +42,15 @@ flowchart TD
     CTRL --> PE3
 ```
 
-### Arithmetic
+## Arithmetic
 
 For signed INT4 feature `x[r]` and signed INT4 weights `w[0]` through `w[3]`:
 
 \[
-y[r] = x[r] \times (w[0]+w[1]+w[2]+w[3])
+y[r] = x[r] \times (w[0] + w[1] + w[2] + w[3])
 \]
 
-The sum of four signed INT4 weights ranges from `-32` to `+28`. The largest positive output is `(-8) × (-32) = +256`. A signed 10-bit result is used because a signed 9-bit value can represent only up to `+255`.
+The sum of four signed INT4 weights ranges from −32 to +28. The largest positive output is `(−8) × (−32) = +256`. A signed 10-bit result is used because a signed 9-bit value can represent only up to +255.
 
 ## Interface and command protocol
 
@@ -64,22 +66,22 @@ The wrapper uses the standard Tiny Tapeout signals.
 | `uio_in[1:0]` | Command input |
 | `uio_in[7:2]` | Unused |
 | `uo_out[7:0]` | Current result byte |
-| `uio_out[2]` | `busy` status |
-| `uio_out[3]` | `output_valid` status |
+| `uio_out[2]` | Busy status |
+| `uio_out[3]` | Output-valid status |
 | `uio_oe[3:2]` | Status pins enabled as outputs |
 
 Commands are encoded in `uio_in[1:0]`:
 
 | Command | Encoding | Meaning |
-|---|---:|---|
-| `IDLE` | `00` | No operation / inter-command gap |
-| `LOAD` | `01` | Load one INT4 nibble from `ui_in[3:0]` |
-| `START` | `10` | Start processing after all eight values are loaded |
-| `READ` | `11` | Advance to the next result byte |
+|---|---|---|
+| IDLE | `00` | No operation / inter-command gap |
+| LOAD | `01` | Load one INT4 nibble from `ui_in[3:0]` |
+| START | `10` | Start processing after all eight values are loaded |
+| READ | `11` | Advance to the next result byte |
 
 ### Input loading order
 
-Issue one `LOAD` command for each value, with an `IDLE` cycle between commands:
+Issue one LOAD command for each value, with an IDLE cycle between commands:
 
 1. `feature_0`
 2. `feature_1`
@@ -90,11 +92,11 @@ Issue one `LOAD` command for each value, with an `IDLE` cycle between commands:
 7. `weight_2`
 8. `weight_3`
 
-Only `ui_in[3:0]` is used. For example, `-1` is encoded as `4'b1111`, `-8` as `4'b1000`, and `+7` as `4'b0111`.
+Only `ui_in[3:0]` is used. For example, −1 is encoded as `4'b1111`, −8 as `4'b1000`, and +7 as `4'b0111`.
 
 ### Reading results
 
-After computation completes, wait for `output_valid` and the wrapper to enter its output state. Read eight bytes, with one `READ` command per byte and an `IDLE` cycle between commands.
+After computation completes, wait for `output_valid` and for the wrapper to enter its output state. Read eight bytes, with one READ command per byte and an IDLE cycle between commands.
 
 | Byte index | Value |
 |---:|---|
@@ -107,13 +109,13 @@ Each signed 10-bit output is sign-extended to 16 bits before byte-wise reading.
 
 ## Verification
 
-The repository contains a Tiny Tapeout Cocotb test and a GitHub Actions test workflow. The test vectors cover positive and negative values, zero weights, and signed INT4 boundary cases. The GDS workflow also performs gate-level testing and physical-design checks.
+The repository contains a Tiny Tapeout Cocotb test and a GitHub Actions test workflow. Test vectors should cover positive and negative values, zero weights, and signed INT4 boundary cases. The GDS workflow also runs gate-level testing and physical-design checks.
 
-For reproducibility, review the [RTL test workflow](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml) and [GDS workflow](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/gds.yaml) for the current `main` branch status.
+For reproducibility, review the RTL test workflow and GDS workflow for the current `main` branch status using the badges above.
 
 ## Latest recorded physical-design snapshot
 
-The following figures are from the recorded successful LibreLane run. They are **flow results, not measurements from fabricated silicon**. Re-run the workflow after RTL or configuration changes and update this table from the new `runs/wokwi/final/metrics.csv`.
+The following figures are from the recorded successful LibreLane run. They are flow results, not measurements from fabricated silicon. Re-run the workflow after RTL or configuration changes and update this table from the new `runs/wokwi/final/metrics.csv`.
 
 | Metric | Recorded result |
 |---|---:|
@@ -130,7 +132,7 @@ The following figures are from the recorded successful LibreLane run. They are *
 | Reported LVS device/net differences | 0 / 0 |
 | Antenna violations | 0 |
 
-**Known item under review:** the final metrics report one max-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), which drives 16 loads against the configured fanout limit of 10. The 1.5 ns maximum-transition constraint changes the checking threshold; it should not be described as physically reducing signal transition time. This warning is documented here rather than hidden.
+**Known item under review:** the final metrics report one max-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), which drives 16 loads against the configured fanout limit of 10. The 1.5 ns maximum-transition constraint changes the checking threshold; it should not be described as physically reducing signal transition time. This warning is documented rather than hidden.
 
 ## Repository layout
 
@@ -138,7 +140,7 @@ The following figures are from the recorded successful LibreLane run. They are *
 .
 ├── .github/workflows/   # Tiny Tapeout test and GDS workflows
 ├── docs/
-│   ├── info.md          # Project description for documentation
+│   ├── info.md          # Project documentation
 │   └── verification.md  # Test and physical-design notes
 ├── src/
 │   ├── config.json      # Physical-design configuration
@@ -151,9 +153,9 @@ The following figures are from the recorded successful LibreLane run. They are *
 
 ## Limitations and future work
 
-- The datapath implements the specific four-output formula shown above; it is not a general 4×4 matrix multiplication engine or a complete CNN convolution pipeline.
+- The datapath implements the specific four-output formula shown above; it is not a general 4×4 matrix-multiplication engine or a complete CNN convolution pipeline.
 - Four PEs are reused over time, reducing multiplier count at the cost of sequential processing latency.
-- The remaining clock-fanout warning should be reviewed for the intended shuttle; workflow success is not the same as a claim that every electrical warning is absent.
+- The remaining clock-fanout warning should be reviewed for the intended shuttle; workflow success is not a claim that every electrical warning is absent.
 - Future work includes documenting hardware bring-up, collecting reproducible area/timing comparisons, and evaluating alternative PE reuse schedules.
 
 ## Acknowledgements
