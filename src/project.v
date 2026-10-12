@@ -448,6 +448,14 @@ module tt_um_cnn_accelerator (
     wire done;
     wire busy;
 
+    // Sticky wrapper-level completion status. The controller's done signal
+    // is a one-cycle pulse, but the Tiny Tapeout wrapper can be paused by
+    // ena. Latch completion even while ena is low so the wrapper cannot
+    // miss the pulse and remain stuck in ST_COMPUTE.
+    reg result_ready;
+    wire result_valid_status;
+    assign result_valid_status = output_valid | result_ready;
+
     // Sign-extend each output to 16 bits for byte reading
     wire signed [15:0] output_0_ext;
     wire signed [15:0] output_1_ext;
@@ -459,8 +467,9 @@ module tt_um_cnn_accelerator (
     assign output_2_ext = {{6{output_2[9]}}, output_2};
     assign output_3_ext = {{6{output_3[9]}}, output_3};
 
-    // Status pins: bit 2 = busy, bit 3 = output_valid
-    assign uio_out = {4'b0000, output_valid, busy, 2'b00};
+    // Status pins: bit 2 = busy, bit 3 = result-valid/ready.
+    // Keep bit 3 asserted until all eight result bytes have been read.
+    assign uio_out = {4'b0000, result_valid_status, busy, 2'b00};
     assign uio_oe  = 8'b0000_1100;
 
     // ------------------------------------------------
@@ -520,6 +529,7 @@ module tt_um_cnn_accelerator (
             load_count    <= 3'd0;
             output_count  <= 3'd0;
             inputs_loaded <= 1'b0;
+            result_ready  <= 1'b0;
 
             feature_0 <= 4'sd0;
             feature_1 <= 4'sd0;
@@ -536,6 +546,12 @@ module tt_um_cnn_accelerator (
         else begin
             // Default: one-cycle start pulse
             start <= 1'b0;
+
+            // Do not gate completion capture with ena. The core continues
+            // to run while ena is low, so done may pulse during that time.
+            // result_ready persists until the host has read all eight bytes.
+            if (done)
+                result_ready <= 1'b1;
 
             if (ena) begin
                 case (state)
@@ -576,7 +592,9 @@ module tt_um_cnn_accelerator (
                     end
 
                     ST_COMPUTE: begin
-                        if (done) begin
+                        // done may have pulsed while ena was low. Use the
+                        // sticky result_ready flag to resume correctly.
+                        if (done || result_ready) begin
                             output_count <= 3'd0;
                             state        <= ST_OUTPUT;
                         end
@@ -590,6 +608,7 @@ module tt_um_cnn_accelerator (
                                 load_count    <= 3'd0;
                                 inputs_loaded <= 1'b0;
                                 output_count  <= 3'd0;
+                                result_ready  <= 1'b0;
                             end
                             else begin
                                 output_count <= output_count + 1'b1;
