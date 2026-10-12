@@ -67,7 +67,7 @@ The wrapper uses the standard Tiny Tapeout signals.
 | `uio_in[7:2]` | Unused |
 | `uo_out[7:0]` | Current result byte |
 | `uio_out[2]` | Busy status |
-| `uio_out[3]` | Output-valid status |
+| `uio_out[3]` | Result-valid status; stays high until all eight result bytes are read |
 | `uio_oe[3:2]` | Status pins enabled as outputs |
 
 Commands are encoded in `uio_in[1:0]`:
@@ -96,7 +96,7 @@ Only `ui_in[3:0]` is used. For example, −1 is encoded as `4'b1111`, −8 as `4
 
 ### Reading results
 
-After computation completes, wait for `output_valid` and for the wrapper to enter its output state. Read eight bytes, with one READ command per byte and an IDLE cycle between commands.
+After computation completes, wait for `uio_out[3]` (result-valid). It remains high until all eight result bytes are read, including if `ena` is low when computation finishes. Read eight bytes, with one READ command per byte and an IDLE cycle between commands.
 
 | Byte index | Value |
 |---:|---|
