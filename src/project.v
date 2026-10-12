@@ -205,10 +205,12 @@ module controller_fsm #(
     reg [2:0] state;
     reg [1:0] row_index;
 
-    localparam COUNT_WIDTH =
-        (COMPUTE_CYCLES > 1) ? $clog2(COMPUTE_CYCLES) : 1;
+   localparam COUNT_WIDTH =
+    (COMPUTE_CYCLES > 1) ? $clog2(COMPUTE_CYCLES) : 1;
 
-    reg [COUNT_WIDTH-1:0] cycle_count;
+localparam [COUNT_WIDTH-1:0] LAST_CYCLE = COMPUTE_CYCLES - 1;
+
+reg [COUNT_WIDTH-1:0] cycle_count;
 
     // Control signals for the PE array
     assign compute_en   = (state == COMPUTE);
@@ -244,7 +246,7 @@ module controller_fsm #(
                 // Four registered PEs require four enabled cycles
                 // for the result to emerge from the final PE.
                 COMPUTE: begin
-                    if (cycle_count == COMPUTE_CYCLES - 1) begin
+                   if (cycle_count == LAST_CYCLE) begin
                         cycle_count <= 0;
                         state       <= CAPTURE;
                     end
