@@ -1,4 +1,4 @@
-`timescale 1ns/1ps
+
 
 // ============================================================
 // INT4 Processing Element
@@ -64,7 +64,7 @@ module pe #(
 
 endmodule
 
-`timescale 1ns/1ps
+
 
 module systolic_array #(
     parameter DATA_WIDTH = 4,
@@ -178,7 +178,7 @@ module systolic_array #(
 endmodule
 
 
-`timescale 1ns/1ps
+
 
 module controller_fsm #(
     parameter COMPUTE_CYCLES = 4
@@ -284,7 +284,7 @@ reg [COUNT_WIDTH-1:0] cycle_count;
 
 endmodule
 
-`timescale 1ns/1ps
+
 
 module cnn_accelerator_top #(
     parameter DATA_WIDTH     = 4,
@@ -394,7 +394,7 @@ module cnn_accelerator_top #(
 
 endmodule
 
-`timescale 1ns/1ps
+
 
 module tt_um_cnn_accelerator (
     input  wire       clk,
