@@ -16,7 +16,7 @@ This is a resource-shared MAC demonstrator for a 4×4 workload, not a fully para
 2. Load eight INT4 values using `uio_in[1:0] = 2'b01` (`LOAD`), placing each two's-complement nibble on `ui_in[3:0]`.
 3. Load in this order: `feature_0`, `feature_1`, `feature_2`, `feature_3`, `weight_0`, `weight_1`, `weight_2`, `weight_3`.
 4. Insert an `IDLE` command (`00`) cycle between commands.
-5. Issue `START` (`10`). Wait for `uio_out[3]` (`output_valid`) and allow the wrapper to enter the output state.
+5. Issue `START` (`10`). Wait for `uio_out[3]` (result-valid) and allow the wrapper to enter the output state. This status is retained if `ena` is low at completion and remains asserted until all eight result bytes have been read.
 6. Read eight bytes using `READ` (`11`), with an `IDLE` cycle between reads. Each output is sent low byte first, then high byte.
 
 The `busy` signal is `uio_out[2]`. Outputs are signed 10-bit values sign-extended to 16 bits for the byte interface.
