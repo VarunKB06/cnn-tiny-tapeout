@@ -18,6 +18,10 @@ The Cocotb suite exercises positive and negative INT4 values, boundary values, a
 
 Run the test workflow from GitHub Actions for the exact CI result of a given commit.
 
+## Enable / completion handshake regression
+
+The wrapper latches the core completion event independently of `ena`, because the core continues computing even when the wrapper is disabled. `uio_out[3]` is therefore a result-valid/ready level: it remains asserted until all eight result bytes have been read. The added `test_ena_low_during_completion` test drops `ena` immediately after completion becomes visible, holds it low for several cycles, re-enables the wrapper, and checks all four signed results. This test has been added to the suite but must be run in the project's simulation environment before its pass status is claimed.
+
 ## Recorded physical-design results
 
 Source: the successful LibreLane GDS artifact's `runs/wokwi/final/metrics.csv`.
