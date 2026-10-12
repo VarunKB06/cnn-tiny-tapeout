@@ -1,42 +1,163 @@
-![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
+# Resource-Shared 4×4 INT4 MAC Accelerator
 
-# Tiny Tapeout Verilog Project Template
+[![RTL](https://img.shields.io/badge/RTL-Verilog-2ea44f)](https://github.com/VarunKB06/cnn-tiny-tapeout)
+[![Tests](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml)
+[![GDS Flow](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/gds.yaml/badge.svg?branch=main)](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/gds.yaml)
+![FPGA](https://img.shields.io/badge/FPGA-Vivado%20RTL%20Simulation-brightgreen?logo=xilinx&logoColor=white)
 
-- [Read the documentation for project](docs/info.md)
+A Tiny Tapeout / SKY130 RTL project exploring resource sharing for a four-feature, four-weight INT4 multiply-accumulate workload. Rather than instantiating sixteen processing elements (PEs), the design reuses a chain of four PEs to process four feature rows sequentially.
 
-## What is Tiny Tapeout?
+> **Architecture scope:** This is a resource-shared 4×4 workload, not a fully parallel 16-PE systolic array or a general matrix-multiplication engine. For each transaction, the current datapath computes `y[r] = feature[r] × sum(weights[0:4])` for `r = 0..3`.
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+## Highlights
 
-To learn more and get started, visit https://tinytapeout.com.
+- Signed INT4 input values (−8 through +7)
+- Four reusable processing elements
+- Signed 10-bit accumulation and output storage
+- Sequential processing of four feature values
+- Tiny Tapeout standard I/O wrapper and byte-wise result-read protocol
+- Cocotb regression tests and automated LibreLane SKY130 physical-design flow
 
-## Set up your Verilog project
+## Architecture
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+Each PE contains a signed 4-bit multiplier, a signed accumulator, and registered feature forwarding. The controller selects one feature value, clears the PE chain, runs four compute-enabled cycles, and captures the row result. The same four PEs are then reused for the next feature.
 
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
+```mermaid
+flowchart TD
+    F[Four INT4 features] --> FS[Feature selector]
+    W[Four INT4 weights] --> PE0[PE 0: multiply by weight 0]
+    PE0 --> PE1[PE 1: accumulate weight 1]
+    PE1 --> PE2[PE 2: accumulate weight 2]
+    PE2 --> PE3[PE 3: accumulate weight 3]
+    FS --> PE0
+    FS --> PE1
+    FS --> PE2
+    FS --> PE3
+    PE3 --> CAP[Capture row result]
+    CAP --> O[One of four output registers]
+    CTRL[Controller: clear / compute / capture / select row] --> FS
+    CTRL --> PE0
+    CTRL --> PE1
+    CTRL --> PE2
+    CTRL --> PE3
+```
 
-## Enable GitHub actions to build the results page
+## Arithmetic
 
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
+For signed INT4 feature `x[r]` and signed INT4 weights `w[0]` through `w[3]`:
 
-## Resources
+\[
+y[r] = x[r] \times (w[0] + w[1] + w[2] + w[3])
+\]
 
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
+The sum of four signed INT4 weights ranges from −32 to +28. The largest positive output is `(−8) × (−32) = +256`. A signed 10-bit result is used because a signed 9-bit value can represent only up to +255.
 
-## What next?
+## Interface and command protocol
 
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+The wrapper uses the standard Tiny Tapeout signals.
+
+| Signal | Use |
+|---|---|
+| `clk` | Clock input |
+| `rst_n` | Active-low reset |
+| `ena` | Design enable |
+| `ui_in[3:0]` | INT4 input value in two's-complement form |
+| `ui_in[7:4]` | Unused |
+| `uio_in[1:0]` | Command input |
+| `uio_in[7:2]` | Unused |
+| `uo_out[7:0]` | Current result byte |
+| `uio_out[2]` | Busy status |
+| `uio_out[3]` | Output-valid status |
+| `uio_oe[3:2]` | Status pins enabled as outputs |
+
+Commands are encoded in `uio_in[1:0]`:
+
+| Command | Encoding | Meaning |
+|---|---|---|
+| IDLE | `00` | No operation / inter-command gap |
+| LOAD | `01` | Load one INT4 nibble from `ui_in[3:0]` |
+| START | `10` | Start processing after all eight values are loaded |
+| READ | `11` | Advance to the next result byte |
+
+### Input loading order
+
+Issue one LOAD command for each value, with an IDLE cycle between commands:
+
+1. `feature_0`
+2. `feature_1`
+3. `feature_2`
+4. `feature_3`
+5. `weight_0`
+6. `weight_1`
+7. `weight_2`
+8. `weight_3`
+
+Only `ui_in[3:0]` is used. For example, −1 is encoded as `4'b1111`, −8 as `4'b1000`, and +7 as `4'b0111`.
+
+### Reading results
+
+After computation completes, wait for `output_valid` and for the wrapper to enter its output state. Read eight bytes, with one READ command per byte and an IDLE cycle between commands.
+
+| Byte index | Value |
+|---:|---|
+| 0, 1 | `output_0`, low byte then high byte |
+| 2, 3 | `output_1`, low byte then high byte |
+| 4, 5 | `output_2`, low byte then high byte |
+| 6, 7 | `output_3`, low byte then high byte |
+
+Each signed 10-bit output is sign-extended to 16 bits before byte-wise reading.
+
+## Verification
+
+The repository contains a Tiny Tapeout Cocotb test and a GitHub Actions test workflow. Test vectors should cover positive and negative values, zero weights, and signed INT4 boundary cases. The GDS workflow also runs gate-level testing and physical-design checks.
+
+For reproducibility, review the RTL test workflow and GDS workflow for the current `main` branch status using the badges above.
+
+## Latest recorded physical-design snapshot
+
+The following figures are from the recorded successful LibreLane run. They are flow results, not measurements from fabricated silicon. Re-run the workflow after RTL or configuration changes and update this table from the new `runs/wokwi/final/metrics.csv`.
+
+| Metric | Recorded result |
+|---|---:|
+| Standard-cell area | 13,098.8 µm² |
+| Core area | 16,493.3 µm² |
+| Core utilization | 79.42% |
+| Worst setup slack | +6.383 ns |
+| Worst hold slack | +0.110 ns |
+| Setup / hold violation counts | 0 / 0 |
+| Max-slew violations under configured 1.5 ns constraint | 0 |
+| Max-capacitance violations | 0 |
+| Max-fanout violations | 1 |
+| Reported Magic DRC errors | 0 |
+| Reported LVS device/net differences | 0 / 0 |
+| Antenna violations | 0 |
+
+**Known item under review:** the final metrics report one max-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), which drives 16 loads against the configured fanout limit of 10. The 1.5 ns maximum-transition constraint changes the checking threshold; it should not be described as physically reducing signal transition time. This warning is documented rather than hidden.
+
+## Repository layout
+
+```text
+.
+├── .github/workflows/   # Tiny Tapeout test and GDS workflows
+├── docs/
+│   ├── info.md          # Project documentation
+│   └── verification.md  # Test and physical-design notes
+├── src/
+│   ├── config.json      # Physical-design configuration
+│   └── project.v        # PE, controller, core, and Tiny Tapeout wrapper
+├── test/
+│   ├── tb.v             # Tiny Tapeout simulation harness
+│   └── test.py          # Cocotb functional tests
+└── info.yaml            # Tiny Tapeout project metadata and pin descriptions
+```
+
+## Limitations and future work
+
+- The datapath implements the specific four-output formula shown above; it is not a general 4×4 matrix-multiplication engine or a complete CNN convolution pipeline.
+- Four PEs are reused over time, reducing multiplier count at the cost of sequential processing latency.
+- The remaining clock-fanout warning should be reviewed for the intended shuttle; workflow success is not a claim that every electrical warning is absent.
+- Future work includes documenting hardware bring-up, collecting reproducible area/timing comparisons, and evaluating alternative PE reuse schedules.
+
+## Acknowledgements
+
+Built with the Tiny Tapeout project template, LibreLane, Verilator, Cocotb, and the SkyWater SKY130 PDK. See the upstream tool and PDK documentation for tool-specific details.
