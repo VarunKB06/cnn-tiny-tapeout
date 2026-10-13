@@ -94,3 +94,242 @@ async def run_case(dut, test_id, features, weights):
     data = [await read_byte(dut) for _ in range(8)]
     actual = [
         signed16(data[0] | (data[1] << 8)),
+        signed16(data[2] | (data[3] << 8)),
+        signed16(data[4] | (data[5] << 8)),
+        signed16(data[6] | (data[7] << 8)),
+    ]
+
+    dut._log.info("Received outputs: %s", actual)
+    dut._log.info("Output bytes: %s", " ".join(f"{b:02X}" for b in data))
+
+    assert actual == expected, (
+        f"Test {test_id} failed: expected {expected}, got {actual}"
+    )
+    dut._log.info("Test %d PASSED", test_id)
+
+
+@cocotb.test()
+async def test_int4_systolic_accelerator_4x4(dut):
+    """Verify the 4x4 signed INT4 systolic accelerator via TT wrapper."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+
+    dut.rst_n.value = 0
+    dut.ena.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = CMD_IDLE
+
+    for _ in range(5):
+        await tick(dut)
+
+    dut.rst_n.value = 1
+    dut.ena.value = 1
+    for _ in range(2):
+        await idle_cycle(dut)
+
+    # Each tuple is (features[0:4], weights[0:4]).
+    # The RTL computes output_r = feature_r * sum(weights).
+    test_vectors = [
+        ([1, 2, 3, 4], [1, 2, -1, 1]),       # weight sum = 3
+        ([2, -3, 7, -8], [4, -2, 1, -1]),    # mixed signed values
+        ([7, -8, 0, -1], [7, 7, 7, 7]),      # maximum positive weights
+        ([-8, 7, -5, 3], [-8, -8, -8, -8]),  # includes output +256
+        ([-8, -1, 1, 7], [-8, 7, -8, 7]),    # alternating boundaries
+        ([-8, -1, 0, 7], [0, 0, 0, 0]),      # zero weights
+        ([-7, 5, -2, 6], [-3, 2, 4, -1]),    # mixed-sign arithmetic
+    ]
+
+    for test_id, (features, weights) in enumerate(test_vectors, start=1):
+        await run_case(dut, test_id, features, weights)
+
+    dut._log.info("ALL TESTS PASSED: %d/%d", len(test_vectors), len(test_vectors))
+
+@cocotb.test()
+async def test_ena_low_during_completion(dut):
+    """Completion must be retained if ena is low during the done pulse."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+
+    dut.rst_n.value = 0
+    dut.ena.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = CMD_IDLE
+    for _ in range(5):
+        await tick(dut)
+
+    dut.rst_n.value = 1
+    dut.ena.value = 1
+    for _ in range(2):
+        await idle_cycle(dut)
+
+    # Include the arithmetic extrema exercised by the original regression:
+    # (-8) * (-8 - 8 - 8 - 8) = +256.
+    features = [-8, 7, 0, -1]
+    weights = [-8, -8, -8, -8]
+    expected = [feature * sum(weights) for feature in features]
+
+    await load_inputs(dut, features, weights)
+    await send_command(dut, CMD_START)
+
+    # Wait until the controller's one-cycle done pulse becomes visible.
+    # Drop ena before the next rising edge, which is the edge on which the
+    # wrapper would normally consume done and enter ST_OUTPUT.
+    saw_valid = False
+    for _ in range(60):
+        await tick(dut)
+        if int(dut.uio_out.value) & 0x08:
+            saw_valid = True
+            break
+
+    assert saw_valid, "Timed out waiting for completion before ena test"
+    dut.ena.value = 0
+
+    # The core leaves FINISH at the next edge. Completion must be latched
+    # even though the wrapper is disabled at that edge.
+    await tick(dut)
+    assert int(dut.uio_out.value) & 0x08, (
+        "result-valid was lost when ena was low during completion"
+    )
+
+    # Leave the design disabled for additional cycles. Result-valid must
+    # remain asserted and the wrapper must retain the pending result.
+    for _ in range(3):
+        await tick(dut)
+        assert int(dut.uio_out.value) & 0x08, (
+            "result-valid did not remain asserted while ena was low"
+        )
+
+    # Re-enable the wrapper. It must observe the latched completion and
+    # enter ST_OUTPUT rather than waiting forever for the expired done pulse.
+    dut.ena.value = 1
+    await tick(dut)
+    assert int(dut.uio_out.value) & 0x08, (
+        "result-valid was not retained after ena was re-enabled"
+    )
+
+    data = [await read_byte(dut) for _ in range(8)]
+    actual = [
+        signed16(data[0] | (data[1] << 8)),
+        signed16(data[2] | (data[3] << 8)),
+        signed16(data[4] | (data[5] << 8)),
+        signed16(data[6] | (data[7] << 8)),
+    ]
+    assert actual == expected, (
+        f"ena-low completion test failed: expected {expected}, got {actual}"
+    )
+    assert not (int(dut.uio_out.value) & 0x08), (
+        "result-valid should deassert after the final result byte is read"
+    )
+    dut._log.info("ENA-LOW COMPLETION TEST PASSED: expected=%s actual=%s", expected, actual)
+
+
+
+def assert_status(dut, expected_busy, expected_valid, context):
+    """Check Tiny Tapeout status bits and output-enable configuration."""
+    status = int(dut.uio_out.value)
+    output_enable = int(dut.uio_oe.value)
+
+    assert output_enable == 0x0C, (
+        f"{context}: expected uio_oe=0x0C, got 0x{output_enable:02X}"
+    )
+    assert status & 0xF3 == 0, (
+        f"{context}: reserved uio_out bits should be zero, got 0x{status:02X}"
+    )
+    assert bool(status & 0x04) is expected_busy, (
+        f"{context}: expected busy={int(expected_busy)}, got {int(bool(status & 0x04))}"
+    )
+    assert bool(status & 0x08) is expected_valid, (
+        f"{context}: expected result_valid={int(expected_valid)}, got {int(bool(status & 0x08))}"
+    )
+    return status
+
+
+@cocotb.test()
+async def test_status_signals(dut):
+    """Check busy, result-valid and output enables across one transaction."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+
+    dut.rst_n.value = 0
+    dut.ena.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = CMD_IDLE
+
+    for _ in range(5):
+        await tick(dut)
+
+    # The output-enable pins are statically configured and status starts idle.
+    assert_status(dut, expected_busy=False, expected_valid=False,
+                  context="during reset")
+
+    dut.rst_n.value = 1
+    dut.ena.value = 1
+    for _ in range(2):
+        await idle_cycle(dut)
+
+    assert_status(dut, expected_busy=False, expected_valid=False,
+                  context="idle after reset")
+
+    features = [1, 2, 3, 4]
+    weights = [1, 2, -1, 1]
+    expected_outputs = [feature * sum(weights) for feature in features]
+
+    await load_inputs(dut, features, weights)
+    assert_status(dut, expected_busy=False, expected_valid=False,
+                  context="after loading inputs")
+
+    await send_command(dut, CMD_START)
+    assert_status(dut, expected_busy=True, expected_valid=False,
+                  context="after START")
+
+    # While there is no result yet, busy should remain asserted. At completion
+    # the controller's FINISH state deasserts busy as result-valid asserts.
+    found_valid = False
+    for _ in range(60):
+        status = int(dut.uio_out.value)
+        output_enable = int(dut.uio_oe.value)
+        assert output_enable == 0x0C, (
+            f"during computation: expected uio_oe=0x0C, got 0x{output_enable:02X}"
+        )
+        assert status & 0xF3 == 0, (
+            f"during computation: reserved status bits are nonzero: 0x{status:02X}"
+        )
+
+        if status & 0x08:
+            found_valid = True
+            break
+
+        assert status & 0x04, (
+            "busy deasserted before result-valid asserted"
+        )
+        await tick(dut)
+
+    assert found_valid, "Timed out waiting for result-valid status"
+
+    # Allow the wrapper to consume completion and enter ST_OUTPUT.
+    await tick(dut)
+    assert_status(dut, expected_busy=False, expected_valid=True,
+                  context="result available")
+
+    # Check that the status remains valid while all eight result bytes are read.
+    expected_bytes = []
+    for result in expected_outputs:
+        result_u16 = result & 0xFFFF
+        expected_bytes.extend([result_u16 & 0xFF, (result_u16 >> 8) & 0xFF])
+
+    for index, expected_byte in enumerate(expected_bytes):
+        assert_status(dut, expected_busy=False, expected_valid=True,
+                      context=f"before reading result byte {index}")
+        actual_byte = await read_byte(dut)
+        assert actual_byte == expected_byte, (
+            f"result byte {index}: expected 0x{expected_byte:02X}, "
+            f"got 0x{actual_byte:02X}"
+        )
+
+        if index < 7:
+            assert_status(dut, expected_busy=False, expected_valid=True,
+                          context=f"after reading result byte {index}")
+        else:
+            assert_status(dut, expected_busy=False, expected_valid=False,
+                          context="after reading the final result byte")
+
+    dut._log.info(
+        "STATUS SIGNAL TEST PASSED: busy, result_valid, uio_oe, and result-byte lifetime verified"
+    )
