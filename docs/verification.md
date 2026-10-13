@@ -1,10 +1,16 @@
 # Verification and Physical-Design Notes
 
-## Functional test vectors
+## Functional reference equation
 
-The Cocotb suite exercises positive and negative INT4 values, boundary values, and zero weights. Expected outputs follow the current datapath equation:
+The datapath computes:
 
 `y[r] = x[r] * (w[0] + w[1] + w[2] + w[3])`.
+
+Features and weights are signed INT4 values in the range -8 through +7. The output and accumulator are signed 10-bit values.
+
+## Directed arithmetic vectors
+
+The Cocotb arithmetic regression exercises positive and negative values, boundary values, and zero weights.
 
 | Case | Features | Weights | Expected outputs |
 |---:|---|---|---|
@@ -16,31 +22,36 @@ The Cocotb suite exercises positive and negative INT4 values, boundary values, a
 | 6 | `[-8, -1, 0, 7]` | `[0, 0, 0, 0]` | `[0, 0, 0, 0]` |
 | 7 | `[-7, 5, -2, 6]` | `[-3, 2, 4, -1]` | `[-14, 10, -4, 12]` |
 
-For another commit, use the [GitHub Actions test workflow](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml) and record its run number and commit SHA here after the run completes.
+## Latest Cocotb regression
 
-## Cocotb regression results
+The latest supplied GitHub Actions screenshot shows the `test` workflow completing successfully on branch `test/status-signal-coverage` (the branch label is truncated in the screenshot) at commit `98a19b3`. The run summary reports **6 tests passed** with a total workflow duration of 27 seconds. No Node.js deprecation warning was shown after updating the test-summary action.
 
-The GitHub Actions **`test`** workflow completed successfully on `main` in run **#41**, at commit `a84317d25f6684a2aea3dc41ae07d7ee14b4eb93`. The [test workflow page](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml) provides access to the run history and logs.
+- [GitHub Actions test workflow history](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml)
+- [Commit `98a19b3`](https://github.com/VarunKB06/cnn-tiny-tapeout/commit/98a19b3)
 
-Environment reported by the run:
+The workflow page above is the workflow history, not a run-specific URL. Open the run for commit `98a19b3` to inspect the exact logs. Add the direct run URL here when it is copied from the browser address bar.
 
-- Icarus Verilog 12.0
-- Cocotb 2.1.0
-- Python 3.11
-
-| Test | Result | Details |
+| Cocotb test | Result | Coverage |
 |---|---|---|
-| `test_int4_systolic_accelerator_4x4` | PASS | All 7 directed arithmetic vectors passed; expected and received outputs matched. Simulation time: 4191 ns. |
-| `test_ena_low_during_completion` | PASS | Completion was retained while `ena` was low; expected outputs `[256, -224, 0, 32]` matched the received outputs. Simulation time: 701 ns. |
-| **Regression total** | **2 passed, 0 failed, 0 skipped** | Total simulation time: 4892 ns. |
+| `test_int4_systolic_accelerator_4x4` | PASS | Seven directed arithmetic vectors; expected outputs match the received outputs. |
+| `test_ena_low_during_completion` | PASS | Checks completion retention when `ena` is low during the completion pulse and validates the four outputs. |
+| `test_status_signals` | PASS | Checks `busy`, result-valid, output-enable, reserved status bits, and byte-read status behavior. |
+| `test_reset_during_compute_and_recovery` | PASS | Asserts reset during computation and checks successful recovery with a new transaction. |
+| `test_repeated_transactions_without_reset` | PASS | Checks two complete transactions without an intervening reset. |
+| `test_deterministic_randomized_vectors` | PASS | Checks 20 reproducible signed-INT4 vectors using seed `0xC0C07B`. |
+| **Total** | **6 passed, 0 failed** | Successful workflow summary. |
 
-### Enable / completion handshake
+## Enable / completion handshake
 
-The wrapper latches the core completion event independently of `ena`, because the core continues computing even when the wrapper is disabled. `uio_out[3]` is a result-valid level that remains asserted until all eight result bytes have been read. The `test_ena_low_during_completion` regression drops `ena` after completion becomes visible, holds it low for several cycles, re-enables the wrapper, and checks all four signed results. This test passed in the run listed above.
+The wrapper retains the completion event independently of `ena`, because the core controller continues to compute while the wrapper may be disabled. The result-valid status is held until all eight result bytes have been read. The `test_ena_low_during_completion` test disables `ena` around completion, re-enables the wrapper, and checks all four signed results.
+
+## Clock used by the Cocotb tests
+
+Both Cocotb tests use a 20 ns clock period (50 MHz), matching `info.yaml` and the 20 ns period in `src/config.json`. Functional simulation is not a replacement for physical timing analysis.
 
 ## Recorded physical-design results
 
-Source: the successful LibreLane GDS artifact's `runs/wokwi/final/metrics.csv`.
+Source previously recorded in the successful LibreLane GDS artifact's `runs/wokwi/final/metrics.csv`. These metrics have not been re-associated with a specific GDS run URL in this document yet.
 
 | Metric | Value |
 |---|---:|
@@ -59,10 +70,10 @@ Source: the successful LibreLane GDS artifact's `runs/wokwi/final/metrics.csv`.
 | LVS net differences | 0 |
 | Antenna violations | 0 |
 
-## Known issue
+## Known physical-design issue
 
-The metrics report one maximum-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), which drives 16 loads against a configured limit of 10. The design's maximum-transition setting is 1.5 ns; zero reported slew violations means the checks pass under that threshold, not that the transition was physically improved by the setting. Obtain guidance for the intended shuttle before deciding if more clock-tree changes are required.
+The recorded metrics report one maximum-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), which drives 16 loads against a configured limit of 10. The maximum-transition setting is 1.5 ns. Zero reported slew violations means the checks pass under that configured threshold; it does not show that the physical transition improved because of the threshold change. Obtain guidance for the intended shuttle before deciding whether further clock-tree changes are required.
 
 ## Reproducibility
 
-Record the commit SHA, GitHub Actions run URL, `src/config.json`, `info.yaml`, and the downloaded GDS logs when capturing new results. Metrics can change when RTL, tool versions, PDK revisions, or configuration changes.
+When publishing new results, record the full commit SHA, direct GitHub Actions run URL, `src/config.json`, `info.yaml`, and the corresponding GDS logs. Physical metrics can change when RTL, tool versions, PDK revisions, or configuration changes.
