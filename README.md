@@ -54,7 +54,7 @@ For signed INT4 feature `x[r]` and signed INT4 weights `w[0]` through `w[3]`:
 y[r] = x[r] \times (w[0] + w[1] + w[2] + w[3])
 \]
 
-The sum of four signed INT4 weights ranges from −32 to +28. The largest positive output is `(−8) × (−32) = +256`. A signed 10-bit result is used because a signed 9-bit value can represent only up to +255.
+The sum of four signed INT4 weights ranges from −32 to +28. The largest positive output is `(-8) × (-32) = +256`. A signed 10-bit result is used because a signed 9-bit value can represent only up to +255.
 
 ## Interface and command protocol
 
@@ -166,6 +166,13 @@ For reproducibility, retain the run URL, full commit SHA, `src/config.json`, `in
 - Four PEs are reused over time, reducing multiplier count at the cost of sequential processing latency.
 - The remaining clock-fanout warning should be reviewed for the intended shuttle; workflow success is not a claim that every electrical warning is absent.
 - Future work includes documenting hardware bring-up, collecting reproducible area/timing comparisons, and evaluating alternative PE reuse schedules.
+
+## Project Team
+
+- [Varun K B](https://github.com/VarunKB06)
+- [ShreyasCN-19](https://github.com/ShreyasCN-19)
+- [rahular2005](https://github.com/rahular2005)
+- [thejasgowda-05](https://github.com/thejasgowda-05)
 
 ## Acknowledgements
 
