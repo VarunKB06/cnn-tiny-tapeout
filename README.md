@@ -23,23 +23,27 @@ A Tiny Tapeout / SKY130 RTL project exploring resource sharing for a four-featur
 Each PE contains a signed 4-bit multiplier, a signed accumulator, and registered feature forwarding. The controller selects one feature value, clears the PE chain, runs four compute-enabled cycles, and captures the row result. The same four PEs are then reused for the next feature.
 
 ```mermaid
-flowchart TD
+flowchart LR
     F[Four INT4 features] --> FS[Feature selector]
-    W[Four INT4 weights] --> PE0[PE 0: multiply by weight 0]
-    PE0 --> PE1[PE 1: accumulate weight 1]
-    PE1 --> PE2[PE 2: accumulate weight 2]
-    PE2 --> PE3[PE 3: accumulate weight 3]
-    FS --> PE0
-    FS --> PE1
-    FS --> PE2
-    FS --> PE3
+    FS -->|selected feature| PE0[PE 0: multiply by weight 0]
+
+    W0[Weight 0] --> PE0
+    W1[Weight 1] --> PE1[PE 1: multiply by weight 1]
+    W2[Weight 2] --> PE2[PE 2: multiply by weight 2]
+    W3[Weight 3] --> PE3[PE 3: multiply by weight 3]
+
+    PE0 -->|registered feature + partial sum| PE1
+    PE1 -->|registered feature + partial sum| PE2
+    PE2 -->|registered feature + partial sum| PE3
+
     PE3 --> CAP[Capture row result]
     CAP --> O[One of four output registers]
-    CTRL[Controller: clear / compute / capture / select row] --> FS
-    CTRL --> PE0
-    CTRL --> PE1
-    CTRL --> PE2
-    CTRL --> PE3
+
+    CTRL[Controller: clear / compute / capture / select row] -. control .-> FS
+    CTRL -. control .-> PE0
+    CTRL -. control .-> PE1
+    CTRL -. control .-> PE2
+    CTRL -. control .-> PE3
 ```
 
 ## Arithmetic
