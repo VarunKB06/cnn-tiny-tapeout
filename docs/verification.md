@@ -1,4 +1,4 @@
-# Verification and Physical-Design Notes
+[# Verification and Physical-Design Notes
 
 ## Functional reference equation
 
@@ -77,3 +77,4 @@ The recorded metrics report one maximum-fanout violation on the root clock buffe
 ## Reproducibility
 
 When publishing new results, record the full commit SHA, direct GitHub Actions run URL, `src/config.json`, `info.yaml`, and the corresponding GDS logs. Physical metrics can change when RTL, tool versions, PDK revisions, or configuration changes.
+](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/runs/38365315668#artifacts)
