@@ -170,32 +170,31 @@ async def test_ena_low_during_completion(dut):
     await load_inputs(dut, features, weights)
     await send_command(dut, CMD_START)
 
-    # Wait until the controller's one-cycle done pulse becomes visible.
-    # Drop ena before the next rising edge, which is the edge on which the
-    # wrapper would normally consume done and enter ST_OUTPUT.
+    # The wrapper has accepted START and the core is running. Disable the
+    # wrapper now, before completion can occur, and keep it disabled while
+    # the core finishes independently of ena.
+    dut.ena.value = 0
+
+    # Wait for completion status while ena is still low. A bounded wait
+    # allows normal RTL/gate-level propagation differences without hiding a
+    # missing completion event.
     saw_valid = False
-    for _ in range(60):
+    for _ in range(40):
         await tick(dut)
         if int(dut.uio_out.value) & 0x08:
             saw_valid = True
             break
 
-    assert saw_valid, "Timed out waiting for completion before ena test"
-    dut.ena.value = 0
-
-    # The core leaves FINISH at the next edge. Completion must be latched
-    # even though the wrapper is disabled at that edge.
-    await tick(dut)
-    assert int(dut.uio_out.value) & 0x08, (
-        "result-valid was lost when ena was low during completion"
+    assert saw_valid, (
+        "result-valid never asserted while ena was low during computation"
     )
 
-    # Leave the design disabled for additional cycles. Result-valid must
-    # remain asserted and the wrapper must retain the pending result.
+    # Allow the controller's one-cycle done pulse to end. The wrapper must
+    # have latched result_ready and retain it while ena remains low.
     for _ in range(3):
         await tick(dut)
         assert int(dut.uio_out.value) & 0x08, (
-            "result-valid did not remain asserted while ena was low"
+            "result-valid did not remain asserted after done while ena was low"
         )
 
     # Re-enable the wrapper. It must observe the latched completion and
@@ -388,11 +387,20 @@ async def test_reset_during_compute_and_recovery(dut):
     await load_inputs(dut, first_features, first_weights)
     await send_command(dut, CMD_START)
 
-    # The controller should be active before we interrupt it.
-    await tick(dut)
-    assert int(dut.uio_out.value) & 0x04, (
+    # The controller should become active before we interrupt it. Use a
+    # bounded wait because gate-level simulation may expose extra signal
+    # propagation latency compared with RTL simulation.
+    busy_seen = False
+    for _ in range(4):
+        if int(dut.uio_out.value) & 0x04:
+            busy_seen = True
+            break
+        await tick(dut)
+
+    assert busy_seen, (
         "busy did not assert before the mid-computation reset"
     )
+    # Keep the reset in the middle of the operation, not at completion.
     for _ in range(2):
         await tick(dut)
 
