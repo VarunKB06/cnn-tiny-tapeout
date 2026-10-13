@@ -1,47 +1,66 @@
-# Sample testbench for a Tiny Tapeout project
+# Test and verification
 
-This is a sample testbench for a Tiny Tapeout project. It uses [cocotb](https://docs.cocotb.org/en/stable/) to drive the DUT and check the outputs.
-See below to get started or for more information, check the [website](https://tinytapeout.com/hdl/testing/).
+This directory contains the Cocotb testbench for `tt_um_cnn_accelerator`, the Tiny Tapeout wrapper for the resource-shared 4×4 signed INT4 MAC accelerator.
 
-## Setting up
+The functional regression currently contains two Cocotb tests:
 
-1. Edit [Makefile](Makefile) and modify `PROJECT_SOURCES` to point to your Verilog files.
-2. Edit [tb.v](tb.v) and replace `tt_um_example` with your module name.
+- `test_int4_systolic_accelerator_4x4`: checks seven directed signed-INT4 input/weight vectors against the reference equation `output[r] = feature[r] * sum(weights)`.
+- `test_ena_low_during_completion`: checks that completion/result-valid is retained when `ena` goes low during the controller's completion pulse, then verifies the four outputs.
 
-## How to run
+The testbench exercises the Tiny Tapeout command interface using `uio_in[1:0]`: `00` = IDLE, `01` = LOAD, `10` = START, `11` = READ. Features and weights are loaded as signed INT4 nibbles through `ui_in[3:0]`. Each signed 10-bit result is read through the wrapper's byte-wise output protocol; the Cocotb helper interprets the returned words as signed 16-bit values.
 
-To run the RTL simulation:
+## Prerequisites
 
-```sh
-make -B
-```
+- Python 3.11 or a compatible version supported by the pinned test dependencies
+- Icarus Verilog (`iverilog` and `vvp`)
+- GTKWave (optional, for viewing waveforms)
 
-To run gatelevel simulation, first harden your project and copy `../runs/wokwi/results/final/verilog/gl/{your_module_name}.v` to `gate_level_netlist.v`.
-
-Then run:
+Install the Python dependencies from the repository root:
 
 ```sh
-make -B GATES=yes
+python -m pip install -r test/requirements.txt
 ```
 
-If you wish to save the waveform in VCD format instead of FST format, edit tb.v to use `$dumpfile("tb.vcd");` and then run:
+On Ubuntu/WSL, install Icarus Verilog with:
 
 ```sh
-make -B FST=
+sudo apt-get update
+sudo apt-get install -y iverilog
 ```
 
-This will generate `tb.vcd` instead of `tb.fst`.
+## Run RTL simulation
 
-## How to view the waveform file
+From the repository root:
 
-Using GTKWave
+```sh
+cd test
+make clean
+make
+python -m cocotb_tools.check_results results.xml
+```
+
+Checking `results.xml` is important: the Makefile's simulator process may return success even when Cocotb has recorded a failed test. A successful regression should report both Cocotb tests passing with zero failures.
+
+The testbench uses a 20 ns clock period to match the project's declared 50 MHz clock configuration. Functional simulation checks behavior; it is not a substitute for static timing analysis or physical-design sign-off.
+
+## View waveforms
+
+The RTL testbench writes `tb.fst` in this directory. From `test/`, run:
 
 ```sh
 gtkwave tb.fst tb.gtkw
 ```
 
-Using Surfer
+The GTKWave save file uses a relative dumpfile path so it can be opened from another checkout or machine. If GTKWave reports that a signal is missing, open `tb.fst` directly and select signals from the current `tb` hierarchy.
+
+## Gate-level simulation
+
+The repository's GDS GitHub Actions workflow runs the configured Tiny Tapeout gate-level test. For a local gate-level run, the SKY130A PDK must be installed and `PDK_ROOT` set, and `test/gate_level_netlist.v` must contain a compatible gate-level netlist for `tt_um_cnn_accelerator`. Then, from `test/`, run:
 
 ```sh
-surfer tb.fst
+make clean
+make GATES=yes
+python -m cocotb_tools.check_results results.xml
 ```
+
+Do not copy a netlist from an unrelated project or an older build. If the correct netlist and PDK setup are not available locally, use the gate-level test artifact/results from the repository's GDS workflow instead.
