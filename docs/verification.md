@@ -1,4 +1,4 @@
-[# Verification and Physical-Design Notes
+# Verification and Physical-Design Notes
 
 ## Functional reference equation
 
@@ -10,7 +10,7 @@ Features and weights are signed INT4 values in the range -8 through +7. The outp
 
 ## Directed arithmetic vectors
 
-The Cocotb arithmetic regression exercises positive and negative values, boundary values, and zero weights.
+The directed Cocotb arithmetic regression exercises positive and negative values, boundary values, and zero weights.
 
 | Case | Features | Weights | Expected outputs |
 |---:|---|---|---|
@@ -22,44 +22,41 @@ The Cocotb arithmetic regression exercises positive and negative values, boundar
 | 6 | `[-8, -1, 0, 7]` | `[0, 0, 0, 0]` | `[0, 0, 0, 0]` |
 | 7 | `[-7, 5, -2, 6]` | `[-3, 2, 4, -1]` | `[-14, 10, -4, 12]` |
 
-## Latest Cocotb regression
+## Cocotb regression
 
-The latest supplied GitHub Actions screenshot shows the `test` workflow completing successfully on branch `test/status-signal-coverage` (the branch label is truncated in the screenshot) at commit `98a19b3`. The run summary reports **6 tests passed** with a total workflow duration of 27 seconds. No Node.js deprecation warning was shown after updating the test-summary action.
-
-- [GitHub Actions test workflow history](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml)
-- [Commit `98a19b3`](https://github.com/VarunKB06/cnn-tiny-tapeout/commit/98a19b3)
-
-The workflow page above is the workflow history, not a run-specific URL. Open the run for commit `98a19b3` to inspect the exact logs. Add the direct run URL here when it is copied from the browser address bar.
+The latest supplied GitHub Actions result reported **6 tests passed, 0 failed**. The suite includes the seven directed arithmetic vectors and the following control/recovery tests:
 
 | Cocotb test | Result | Coverage |
 |---|---|---|
-| `test_int4_systolic_accelerator_4x4` | PASS | Seven directed arithmetic vectors; expected outputs match the received outputs. |
-| `test_ena_low_during_completion` | PASS | Checks completion retention when `ena` is low during the completion pulse and validates the four outputs. |
-| `test_status_signals` | PASS | Checks `busy`, result-valid, output-enable, reserved status bits, and byte-read status behavior. |
-| `test_reset_during_compute_and_recovery` | PASS | Asserts reset during computation and checks successful recovery with a new transaction. |
-| `test_repeated_transactions_without_reset` | PASS | Checks two complete transactions without an intervening reset. |
-| `test_deterministic_randomized_vectors` | PASS | Checks 20 reproducible signed-INT4 vectors using seed `0xC0C07B`. |
-| **Total** | **6 passed, 0 failed** | Successful workflow summary. |
+| `test_int4_systolic_accelerator_4x4` | PASS | Seven directed signed-INT4 arithmetic vectors. |
+| `test_ena_low_during_completion` | PASS | Completion/result-valid retention when `ena` is low, plus result checking. |
+| `test_status_signals` | PASS | `busy`, result-valid, output-enable, reserved status bits, and output-byte protocol. |
+| `test_reset_during_compute_and_recovery` | PASS | Reset during an active transaction followed by a fresh transaction. |
+| `test_repeated_transactions_without_reset` | PASS | Two complete transactions without intervening reset. |
+| `test_deterministic_randomized_vectors` | PASS | 20 reproducible signed-INT4 vectors using seed `0xC0C07B`. |
+| **Total** | **6 passed, 0 failed** | Latest supplied regression result. |
 
-## Enable / completion handshake
+References:
+- [Test workflow history](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml)
+- [Tested commit `98a19b3`](https://github.com/VarunKB06/cnn-tiny-tapeout/commit/98a19b3)
 
-The wrapper retains the completion event independently of `ena`, because the core controller continues to compute while the wrapper may be disabled. The result-valid status is held until all eight result bytes have been read. The `test_ena_low_during_completion` test disables `ena` around completion, re-enables the wrapper, and checks all four signed results.
+The test suite uses a 20 ns clock period (50 MHz), matching `info.yaml` and `src/config.json`. Functional simulation is not a substitute for static timing analysis or physical-design sign-off.
 
-## Clock used by the Cocotb tests
+## ENA / completion handshake
 
-Both Cocotb tests use a 20 ns clock period (50 MHz), matching `info.yaml` and the 20 ns period in `src/config.json`. Functional simulation is not a replacement for physical timing analysis.
+The wrapper retains the completion event independently of `ena`. Result-valid remains asserted until all eight result bytes have been read. The corresponding regression checks completion retention when the wrapper is disabled around completion, then verifies the four signed results.
 
-## Recorded physical-design results
+## Latest recorded physical-design snapshot
 
-Source previously recorded in the successful LibreLane GDS artifact's `runs/wokwi/final/metrics.csv`. These metrics have not been re-associated with a specific GDS run URL in this document yet.
+The metrics below are from [GDS workflow run 38365315668](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/runs/38365315668), commit [`162f691`](https://github.com/VarunKB06/cnn-tiny-tapeout/commit/162f691557bef0d33352218c2a7ba2ffdda59a8d). The GDS archive identifies that commit and run; the user confirmed that `gl_test` succeeded for this workflow. These are EDA flow results, not measurements from fabricated silicon.
 
-| Metric | Value |
+| Metric | Recorded result |
 |---|---:|
-| Standard-cell area | 13,098.8 µm² |
+| Standard-cell area | 13,088.8 µm² |
 | Core area | 16,493.3 µm² |
-| Core utilization | 79.42% |
-| Setup worst slack | +6.383 ns |
-| Hold worst slack | +0.110 ns |
+| Core utilization | 79.36% |
+| Worst setup slack | +6.292 ns |
+| Worst hold slack | +0.115 ns |
 | Setup violations | 0 |
 | Hold violations | 0 |
 | Maximum-slew violations under the configured 1.5 ns limit | 0 |
@@ -72,9 +69,10 @@ Source previously recorded in the successful LibreLane GDS artifact's `runs/wokw
 
 ## Known physical-design issue
 
-The recorded metrics report one maximum-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), which drives 16 loads against a configured limit of 10. The maximum-transition setting is 1.5 ns. Zero reported slew violations means the checks pass under that configured threshold; it does not show that the physical transition improved because of the threshold change. Obtain guidance for the intended shuttle before deciding whether further clock-tree changes are required.
+The report identifies one maximum-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), driving 16 loads against a configured limit of 10. The maximum-transition setting is 1.5 ns. Zero reported slew violations means checks pass under that configured threshold; it does not establish that the underlying physical transition improved.
+
+The configuration sets `RUN_KLAYOUT_DRC: 0`, so KLayout DRC was not run and should not be described as passed. Magic DRC, LVS, and antenna results above are reported separately.
 
 ## Reproducibility
 
-When publishing new results, record the full commit SHA, direct GitHub Actions run URL, `src/config.json`, `info.yaml`, and the corresponding GDS logs. Physical metrics can change when RTL, tool versions, PDK revisions, or configuration changes.
-](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/runs/38365315668#artifacts)
+For future runs, record the full commit SHA, direct GitHub Actions run URL, `src/config.json`, `info.yaml`, and associated GDS logs. Physical metrics may change with RTL, tool versions, PDK revisions, or configuration.
