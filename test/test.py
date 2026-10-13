@@ -277,8 +277,33 @@ async def test_status_signals(dut):
                   context="after loading inputs")
 
     await send_command(dut, CMD_START)
+
+    # The wrapper and controller are separate sequential blocks: the wrapper
+    # registers the start pulse, and the controller consumes it on a later
+    # rising edge. Gate-level simulation can expose that cycle of latency more
+    # clearly than RTL simulation. Require busy to assert within a bounded
+    # number of cycles rather than sampling it immediately after START.
+    busy_seen = False
+    for _ in range(4):
+        status = int(dut.uio_out.value)
+        output_enable = int(dut.uio_oe.value)
+        assert output_enable == 0x0C, (
+            f"after START: expected uio_oe=0x0C, got 0x{output_enable:02X}"
+        )
+        assert status & 0xF3 == 0, (
+            f"after START: reserved status bits are nonzero: 0x{status:02X}"
+        )
+        assert not (status & 0x08), (
+            "result-valid asserted before computation completed"
+        )
+        if status & 0x04:
+            busy_seen = True
+            break
+        await tick(dut)
+
+    assert busy_seen, "busy did not assert within 4 cycles after START"
     assert_status(dut, expected_busy=True, expected_valid=False,
-                  context="after START")
+                  context="computation started")
 
     # While there is no result yet, busy should remain asserted. At completion
     # the controller's FINISH state deasserts busy as result-valid asserts.
