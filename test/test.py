@@ -111,7 +111,7 @@ async def run_case(dut, test_id, features, weights):
 @cocotb.test()
 async def test_int4_systolic_accelerator_4x4(dut):
     """Verify the 4x4 signed INT4 systolic accelerator via TT wrapper."""
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
 
     dut.rst_n.value = 0
     dut.ena.value = 0
@@ -146,7 +146,7 @@ async def test_int4_systolic_accelerator_4x4(dut):
 @cocotb.test()
 async def test_ena_low_during_completion(dut):
     """Completion must be retained if ena is low during the done pulse."""
-    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
 
     dut.rst_n.value = 0
     dut.ena.value = 0
