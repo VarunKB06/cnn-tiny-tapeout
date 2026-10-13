@@ -1,4 +1,5 @@
 import cocotb
+import random
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
@@ -483,3 +484,41 @@ async def test_repeated_transactions_without_reset(dut):
         )
 
     dut._log.info("REPEATED TRANSACTIONS TEST PASSED: 2 transactions without reset")
+
+
+@cocotb.test()
+async def test_deterministic_randomized_vectors(dut):
+    """Check reproducible pseudorandom signed-INT4 workloads against Python."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+
+    dut.rst_n.value = 0
+    dut.ena.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = CMD_IDLE
+    for _ in range(5):
+        await tick(dut)
+
+    dut.rst_n.value = 1
+    dut.ena.value = 1
+    for _ in range(2):
+        await idle_cycle(dut)
+
+    seed = 0xC0C07B
+    vector_count = 20
+    rng = random.Random(seed)
+    dut._log.info(
+        "Starting deterministic randomized INT4 regression: seed=0x%X, vectors=%d",
+        seed, vector_count
+    )
+
+    for vector_id in range(1, vector_count + 1):
+        features = [rng.randint(-8, 7) for _ in range(4)]
+        weights = [rng.randint(-8, 7) for _ in range(4)]
+        await run_case(
+            dut, vector_id, features, weights
+        )
+
+    dut._log.info(
+        "DETERMINISTIC RANDOMIZED REGRESSION PASSED: %d vectors, seed=0x%X",
+        vector_count, seed
+    )
