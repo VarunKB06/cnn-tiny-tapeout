@@ -16,11 +16,27 @@ The Cocotb suite exercises positive and negative INT4 values, boundary values, a
 | 6 | `[-8, -1, 0, 7]` | `[0, 0, 0, 0]` | `[0, 0, 0, 0]` |
 | 7 | `[-7, 5, -2, 6]` | `[-3, 2, 4, -1]` | `[-14, 10, -4, 12]` |
 
-Run the test workflow from GitHub Actions for the exact CI result of a given commit.
+For another commit, use the [GitHub Actions test workflow](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml) and record its run number and commit SHA here after the run completes.
 
-## Enable / completion handshake regression
+## Cocotb regression results
 
-The wrapper latches the core completion event independently of `ena`, because the core continues computing even when the wrapper is disabled. `uio_out[3]` is therefore a result-valid/ready level: it remains asserted until all eight result bytes have been read. The added `test_ena_low_during_completion` test drops `ena` immediately after completion becomes visible, holds it low for several cycles, re-enables the wrapper, and checks all four signed results. This test has been added to the suite but must be run in the project's simulation environment before its pass status is claimed.
+The GitHub Actions **`test`** workflow completed successfully on `main` in run **#41**, at commit `a84317d25f6684a2aea3dc41ae07d7ee14b4eb93`. The [test workflow page](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml) provides access to the run history and logs.
+
+Environment reported by the run:
+
+- Icarus Verilog 12.0
+- Cocotb 2.1.0
+- Python 3.11
+
+| Test | Result | Details |
+|---|---|---|
+| `test_int4_systolic_accelerator_4x4` | PASS | All 7 directed arithmetic vectors passed; expected and received outputs matched. Simulation time: 4191 ns. |
+| `test_ena_low_during_completion` | PASS | Completion was retained while `ena` was low; expected outputs `[256, -224, 0, 32]` matched the received outputs. Simulation time: 701 ns. |
+| **Regression total** | **2 passed, 0 failed, 0 skipped** | Total simulation time: 4892 ns. |
+
+### Enable / completion handshake
+
+The wrapper latches the core completion event independently of `ena`, because the core continues computing even when the wrapper is disabled. `uio_out[3]` is a result-valid level that remains asserted until all eight result bytes have been read. The `test_ena_low_during_completion` regression drops `ena` after completion becomes visible, holds it low for several cycles, re-enables the wrapper, and checks all four signed results. This test passed in the run listed above.
 
 ## Recorded physical-design results
 
