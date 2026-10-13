@@ -113,21 +113,24 @@ Each signed 10-bit output is sign-extended to 16 bits before byte-wise reading.
 
 ## Verification
 
-The repository contains a Tiny Tapeout Cocotb test and a GitHub Actions test workflow. Test vectors should cover positive and negative values, zero weights, and signed INT4 boundary cases. The GDS workflow also runs gate-level testing and physical-design checks.
+The Cocotb regression contains six tests: seven directed arithmetic vectors, the `ena` completion-handshake test, status-signal checks, reset recovery, repeated transactions without reset, and 20 deterministic randomized vectors (seed `0xC0C07B`). The latest supplied GitHub Actions result reported all six tests passing.
 
-For reproducibility, review the RTL test workflow and GDS workflow for the current `main` branch status using the badges above.
+- [Test workflow history](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml)
+- [Tested commit `98a19b3`](https://github.com/VarunKB06/cnn-tiny-tapeout/commit/98a19b3)
+
+The GDS workflow includes the gate-level test. The successful archived run below was built at commit `162f691557bef0d33352218c2a7ba2ffdda59a8d`; the user-confirmed `gl_test` passed for that run.
 
 ## Latest recorded physical-design snapshot
 
-The following figures are from the recorded successful LibreLane run. They are flow results, not measurements from fabricated silicon. Re-run the workflow after RTL or configuration changes and update this table from the new `runs/wokwi/final/metrics.csv`.
+The following figures are from [GDS workflow run 38365315668](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/runs/38365315668), commit [`162f691`](https://github.com/VarunKB06/cnn-tiny-tapeout/commit/162f691557bef0d33352218c2a7ba2ffdda59a8d). These are EDA flow results, not measurements from fabricated silicon.
 
 | Metric | Recorded result |
 |---|---:|
-| Standard-cell area | 13,098.8 µm² |
+| Standard-cell area | 13,088.8 µm² |
 | Core area | 16,493.3 µm² |
-| Core utilization | 79.42% |
-| Worst setup slack | +6.383 ns |
-| Worst hold slack | +0.110 ns |
+| Core utilization | 79.36% |
+| Worst setup slack | +6.292 ns |
+| Worst hold slack | +0.115 ns |
 | Setup / hold violation counts | 0 / 0 |
 | Max-slew violations under configured 1.5 ns constraint | 0 |
 | Max-capacitance violations | 0 |
@@ -136,7 +139,9 @@ The following figures are from the recorded successful LibreLane run. They are f
 | Reported LVS device/net differences | 0 / 0 |
 | Antenna violations | 0 |
 
-**Known item under review:** the final metrics report one max-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), which drives 16 loads against the configured fanout limit of 10. The 1.5 ns maximum-transition constraint changes the checking threshold; it should not be described as physically reducing signal transition time. This warning is documented rather than hidden.
+**Known item under review:** this run reports one max-fanout violation on the root clock buffer (`clkbuf_0_clk/X`), which drives 16 loads against the configured fanout limit of 10. The 1.5 ns maximum-transition constraint changes the checking threshold; it should not be described as physically reducing signal transition time. The configuration sets `RUN_KLAYOUT_DRC: 0`, so KLayout DRC was not run and should not be described as passed.
+
+For reproducibility, retain the run URL, full commit SHA, `src/config.json`, `info.yaml`, and corresponding GDS logs with future reports.
 
 ## Repository layout
 
