@@ -3,7 +3,7 @@
 [![RTL](https://img.shields.io/badge/RTL-Verilog-2ea44f)](https://github.com/VarunKB06/cnn-tiny-tapeout)
 [![Tests](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/test.yaml)
 [![GDS Flow](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/gds.yaml/badge.svg?branch=main)](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/gds.yaml)
-![FPGA](https://img.shields.io/badge/FPGA-Vivado%20RTL%20Simulation-brightgreen?logo=xilinx&logoColor=white)
+[![Tiny Tapeout FPGA Build](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/fpga.yaml/badge.svg?branch=main)](https://github.com/VarunKB06/cnn-tiny-tapeout/actions/workflows/fpga.yaml)
 
 A Tiny Tapeout / SKY130 RTL project exploring resource sharing for a four-feature, four-weight INT4 multiply-accumulate workload. Rather than instantiating sixteen processing elements (PEs), the design reuses a chain of four PEs to process four feature rows sequentially.
 
