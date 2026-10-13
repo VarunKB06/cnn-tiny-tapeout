@@ -333,3 +333,94 @@ async def test_status_signals(dut):
     dut._log.info(
         "STATUS SIGNAL TEST PASSED: busy, result_valid, uio_oe, and result-byte lifetime verified"
     )
+
+@cocotb.test()
+async def test_reset_during_compute_and_recovery(dut):
+    """Reset during an active computation, then verify a fresh transaction."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+
+    dut.rst_n.value = 0
+    dut.ena.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = CMD_IDLE
+    for _ in range(5):
+        await tick(dut)
+
+    assert_status(
+        dut, expected_busy=False, expected_valid=False,
+        context="initial reset"
+    )
+
+    dut.rst_n.value = 1
+    dut.ena.value = 1
+    for _ in range(2):
+        await idle_cycle(dut)
+
+    # Start a transaction, then reset it before the computation completes.
+    first_features = [7, -8, 3, -2]
+    first_weights = [1, 1, 1, 1]
+    await load_inputs(dut, first_features, first_weights)
+    await send_command(dut, CMD_START)
+
+    # The controller should be active before we interrupt it.
+    await tick(dut)
+    assert int(dut.uio_out.value) & 0x04, (
+        "busy did not assert before the mid-computation reset"
+    )
+    for _ in range(2):
+        await tick(dut)
+
+    dut.rst_n.value = 0
+    dut.uio_in.value = CMD_IDLE
+    dut.ui_in.value = 0
+    for _ in range(5):
+        await tick(dut)
+
+    status = int(dut.uio_out.value)
+    assert status & 0x0C == 0, (
+        f"status should clear during reset, got uio_out=0x{status:02X}"
+    )
+    assert int(dut.uo_out.value) == 0, (
+        "uo_out should be zero while reset is asserted"
+    )
+    assert int(dut.uio_oe.value) == 0x0C, (
+        f"expected uio_oe=0x0C during reset, got 0x{int(dut.uio_oe.value):02X}"
+    )
+
+    # Release reset and ensure no stale completion/result-valid remains.
+    dut.rst_n.value = 1
+    for _ in range(2):
+        await idle_cycle(dut)
+    assert_status(
+        dut, expected_busy=False, expected_valid=False,
+        context="idle after mid-computation reset"
+    )
+
+    # Run a different transaction to prove the design can recover normally.
+    features = [2, -3, 4, -1]
+    weights = [1, 2, 0, -1]
+    expected = [feature * sum(weights) for feature in features]
+
+    await load_inputs(dut, features, weights)
+    await send_command(dut, CMD_START)
+    await wait_for_output(dut)
+
+    data = [await read_byte(dut) for _ in range(8)]
+    actual = [
+        signed16(data[0] | (data[1] << 8)),
+        signed16(data[2] | (data[3] << 8)),
+        signed16(data[4] | (data[5] << 8)),
+        signed16(data[6] | (data[7] << 8)),
+    ]
+    assert actual == expected, (
+        f"post-reset transaction failed: expected {expected}, got {actual}"
+    )
+    assert_status(
+        dut, expected_busy=False, expected_valid=False,
+        context="after post-reset transaction is fully read"
+    )
+    dut._log.info(
+        "RESET RECOVERY TEST PASSED: reset aborted an in-flight transaction; "
+        "a new transaction returned %s", actual
+    )
+
