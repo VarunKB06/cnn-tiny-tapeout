@@ -424,3 +424,62 @@ async def test_reset_during_compute_and_recovery(dut):
         "a new transaction returned %s", actual
     )
 
+
+
+@cocotb.test()
+async def test_repeated_transactions_without_reset(dut):
+    """Run two complete transactions back-to-back without resetting the DUT."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+
+    dut.rst_n.value = 0
+    dut.ena.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = CMD_IDLE
+    for _ in range(5):
+        await tick(dut)
+
+    dut.rst_n.value = 1
+    dut.ena.value = 1
+    for _ in range(2):
+        await idle_cycle(dut)
+
+    transactions = [
+        ([1, 2, 3, 4], [1, 2, -1, 1]),
+        ([-8, 7, 0, -1], [-8, -8, -8, -8]),
+    ]
+
+    for tx_id, (features, weights) in enumerate(transactions, start=1):
+        expected = [feature * sum(weights) for feature in features]
+        assert_status(
+            dut, expected_busy=False, expected_valid=False,
+            context=f"before transaction {tx_id}"
+        )
+
+        await load_inputs(dut, features, weights)
+        await send_command(dut, CMD_START)
+        await wait_for_output(dut)
+        assert_status(
+            dut, expected_busy=False, expected_valid=True,
+            context=f"result available for transaction {tx_id}"
+        )
+
+        data = [await read_byte(dut) for _ in range(8)]
+        actual = [
+            signed16(data[0] | (data[1] << 8)),
+            signed16(data[2] | (data[3] << 8)),
+            signed16(data[4] | (data[5] << 8)),
+            signed16(data[6] | (data[7] << 8)),
+        ]
+        assert actual == expected, (
+            f"transaction {tx_id}: expected {expected}, got {actual}"
+        )
+        assert_status(
+            dut, expected_busy=False, expected_valid=False,
+            context=f"after transaction {tx_id} results are read"
+        )
+        dut._log.info(
+            "REPEATED TRANSACTION %d PASSED: expected=%s actual=%s",
+            tx_id, expected, actual
+        )
+
+    dut._log.info("REPEATED TRANSACTIONS TEST PASSED: 2 transactions without reset")
